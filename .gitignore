@@ -1,1 +1,4 @@
+*.csv
 .env
+HTML_Cache/
+Company Careers/
