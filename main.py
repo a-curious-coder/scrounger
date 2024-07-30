@@ -15,7 +15,7 @@ import json
 load_dotenv()
 
 # Set up logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 JINA_API_KEY = os.environ.get('JINAAI_API_KEY')
@@ -55,7 +55,7 @@ def get_html_content(url: str) -> str:
         logger.info(f"📂 Reading HTML content from cache: {file_path}")
         with open(file_path, 'r', encoding='utf-8') as file:
             content = file.read()
-        logger.debug(f"📄 Read cached HTML content (length: {len(content)} characters)")
+        logger.info(f"📄 Read cached HTML content (length: {len(content)} characters)")
         return content
     
     # If file doesn't exist or is too old, fetch the content and save it
@@ -75,7 +75,7 @@ def get_html_content(url: str) -> str:
             file.write(content)
         logger.info(f"💾 Saved HTML content to cache: {file_path}")
         
-        logger.debug(f"📄 Received HTML content (length: {len(content)} characters)")
+        logger.info(f"📄 Received HTML content (length: {len(content)} characters)")
         return content
     
     except requests.RequestException as e:
@@ -94,31 +94,31 @@ def extract_urls_from_html(html_content: str, base_url: str) -> List[str]:
         href = tag.get('href') or tag.get('src')
         if href:
             full_url = urljoin(base_url, href)
+            if any(item in full_url for item in ['media', 'css', 'font']):
+                continue
             parsed = urlparse(full_url)
             if parsed.scheme in ('http', 'https') and parsed.netloc:
                 urls.add(full_url)
     
     unique_urls = list(urls)
-    logger.debug(f"📋 Extracted {len(unique_urls)} unique URLs")
+    logger.info(f"📋 Extracted {len(unique_urls)} unique URLs")
     return unique_urls
 
 def extract_job_page_url(urls: List[str], blacklist=[]) -> Optional[str]:
     """Use OpenAI to analyze the URLs and find the most likely job listings page."""
     logger.info("🤖 Analyzing URLs to find job listings page")
-    prompt = f"Given the following list of URLs, give me only one URL that is most likely to contain the company's job listings. It must not be in the following blacklist: [{blacklist}\nIf you are not sure, simple say \"None\":\n\n" + "\n".join(urls)
+    prompt = f"Given the following list of URLs, give me the one URL that is most likely to contain the company's job listings. You must only respond with the URL, nothing else. The URL must not be an exact match to any urls in the following blacklist although if it's similar, that is allowed.: [{blacklist}\nIf you are not sure, simply say \"None\":\n\n" + "\n".join(urls)
     response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}]
     )
     job_page_url = response.choices[0].message.content.strip()
     if job_page_url.lower() != 'none':
-
         logger.info(f"✅ Identified job listings page: {job_page_url}")
         return job_page_url
     else:
         logger.warning("❌ Could not identify job listings page")
         return None
-
 
 def verify_job_listing(url):
     """
@@ -173,7 +173,6 @@ def verify_job_listing(url):
         print(f"Error fetching URL: {url}")
         return False
 
-
 def extract_job_listings(potential_job_urls: List[str], blacklist=[]) -> List[str]:
     """Filter and extract valid job listing URLs from a list of potential URLs using ChatGPT."""
     logger.info("🔍 Extracting job listing URLs")
@@ -203,12 +202,12 @@ def extract_job_listings(potential_job_urls: List[str], blacklist=[]) -> List[st
         if not isinstance(job_urls, list) or not all(isinstance(url, str) for url in job_urls):
             raise ValueError("ChatGPT did not return a valid list of URLs")
         
-        logger.debug(f"📋 Extracted {len(job_urls)} job listing URLs out of {len(potential_job_urls)} potential URLs")
         final = []
         # verify job urls:
-        for url in job_urls.copy:
-            if is_job_listing_url(url):
+        for url in job_urls:
+            if verify_job_listing(url):
                 final.append(url)
+        logger.info(f"📋 Extracted {len(final)} job listing URLs out of {len(potential_job_urls)} potential URLs")
         return final
     
     except (json.JSONDecodeError, ValueError, openai.OpenAIError) as e:
@@ -234,7 +233,7 @@ def extract_data_from_job_listing(html_content: str) -> dict:
     )
     csv_data = response.choices[0].message.content.strip().split('\n')[1]  # Skip header
     job_info = dict(zip(['url', 'title', 'description', 'company', 'location', 'salary'], csv_data.split(',')))
-    logger.debug(f"📊 Extracted job information: {job_info}")
+    logger.info(f"📊 Extracted job information: {job_info}")
     return job_info
 
 
@@ -255,9 +254,9 @@ def write_to_csv(job_ad: JobAd, filename: str):
             if f.tell() == 0:
                 writer.writeheader()
             writer.writerow(job_ad.__dict__)
-        logger.debug(f"✅ Job ad written to CSV: {job_ad.url}")
+        logger.info(f"✅ Job ad written to CSV: {job_ad.url}")
     else:
-        logger.debug(f"⏭️ Job ad already exists in CSV, skipping: {job_ad.url}")
+        logger.info(f"⏭️ Job ad already exists in CSV, skipping: {job_ad.url}")
 
 
 def save_job_page_url(company_name, job_page_url):
@@ -280,13 +279,43 @@ class JobCrawler:
     def find_job_page(self):
         visited_urls = []
         contains_job_listings = False
+        company_domain = self.crawl_url.strip("https://")
         while not contains_job_listings:
             crawl_html = get_html_content(self.crawl_url)
-            urls = extract_urls_from_html(crawl_html, self.crawl_url)
+            urls = extract_urls_from_html(crawl_html, self.homepage_url)
             self.job_page_url = extract_job_page_url(urls, blacklist=visited_urls)
-            self.job_urls = extract_job_listings(urls, blacklist=visited_urls)
+            if self.job_page_url is None or self.job_page_url in visited_urls:
+                self.job_page_url = None
+                # Attempt to find careers page via google
+                potential_career_urls = [
+                    f"https://{company_domain}/jobs",
+                    f"https://{company_domain}/careers",
+                    f"https://{company_domain}/work-with-us",
+                    f"https://{company_domain}/join-our-team",
+                    f"https://careers.{company_domain}",
+                ]
+                
+                for url in potential_career_urls:
+                    if url not in visited_urls:
+                        career_page_html = get_html_content(url)
+                        if career_page_html != "":
+                            self.job_page_url = url
+                            break
+                
+                if self.job_page_url is None:
+                    logger.error(f"❌ Cannot find job listings page for {self.homepage_url}")
+                    return False
+                else:
+                    print(f"Found careers page via fabricated URL: {self.job_page_url}")
+                
+            visited_urls.append(self.job_page_url)
+            
+            potential_job_listings_site = get_html_content(self.job_page_url)
+            potential_listing_urls = extract_urls_from_html(potential_job_listings_site, self.homepage_url)
 
-            if self.job_urls[0].lower() != "none":
+            self.job_urls = extract_job_listings(potential_listing_urls, blacklist=visited_urls)
+            
+            if len(self.job_urls) > 0 and self.job_urls[0].lower() != "none":
                 contains_job_listings = True
             elif self.job_page_url:
                 self.crawl_url = self.job_page_url
@@ -332,10 +361,19 @@ def process_company(homepage_url: str, output_file: str):
     if crawler.find_job_page():
         crawler.save_job_page_url(careers_file)
         crawler.process_job_listings(output_file)
+        logger.info("✨ Job extraction process completed")
     else:
         logger.error("Failed to find job listings. Exiting.")
 
 def main():
+    # sites = [
+    #     https://www.bbc.co.uk
+    #     https://www.skygroup.sky
+    #     https://www.revolut.com
+    #     https://www.deliveroo.co.uk
+    #     https://monzo.com
+    # ]
+    # for site in sites:
     parser = argparse.ArgumentParser(description="Extract job listings for a company")
     parser.add_argument("homepage_url", help="URL of the company's homepage")
     parser.add_argument("--output", default="job_listings.csv", help="Output CSV file name")
@@ -343,7 +381,6 @@ def main():
 
     logger.info(f"🚀 Starting job extraction process for {args.homepage_url}")
     process_company(args.homepage_url, args.output)
-    logger.info("✨ Job extraction process completed")
 
 if __name__ == "__main__":
     main()

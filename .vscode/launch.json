@@ -5,11 +5,23 @@
             "name": "Python Debugger: Current File with venv",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "main.py",
             "console": "integratedTerminal",
             "args": ["https://futurlab.co.uk"],
             "python": "${workspaceFolder}/.venv/bin/python",
             "env": {"PYTHONPATH": "${workspaceFolder}"}
+        },
+        {
+            "name": "Job Crawler",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test.py",
+            "python": "${workspaceFolder}/.venv/bin/python",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }
