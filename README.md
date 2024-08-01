@@ -2,6 +2,7 @@
 
 This project extracts job listings from company websites using AI-powered analysis.
 
+
 ## Setup
 
 1. Clone the repository
@@ -43,4 +44,29 @@ For more detailed usage and configuration options, please refer to the script's 
 
 ```sh
 python main.py --help
+```
+
+## Workflow
+
+```mermaid
+%%{init: {'theme': 'dark', 'flowchart': {'curve': 'basis'}, 'fontSize': 14}}%%
+flowchart TB
+    Start(["`Start`"]) --> CheckCompanyURL{"`Is there another company we want to scrape job ads from?`"}
+    CheckCompanyURL -->|No| Exit(["`Exit`"])
+    CheckCompanyURL -->|Yes| GetMainPage["`Fetch & save company webpage HTML`"]
+    GetMainPage --> FindCareersURL{"`Find careers page URL in HTML`"}
+    FindCareersURL -->|Not found| CheckCompanyURL
+    FindCareersURL -->|Found| GetCareersPage["`Fetch & save careers page HTML`"]
+    GetCareersPage --> FindJobListings{"`Find job listings on careers page`"}
+    FindJobListings -->|Not found| FindCareersURL
+    FindJobListings -->|Found| ExtractJobURLs["`Extract job listing URLs`"]
+    ExtractJobURLs --> CheckJobURL{"`Any job URLs left to process?`"}
+    CheckJobURL -->|No| CheckValidJob{"`Was a valid job saved?`"}
+    CheckValidJob -->|No| FindCareersURL
+    CheckValidJob -->|Yes| CheckCompanyURL
+    CheckJobURL -->|Yes| GetJobPage["`Fetch & save job listing HTML`"]
+    GetJobPage --> ExtractJobInfo{"`Extract job information`"}
+    ExtractJobInfo -->|Failed| CheckJobURL
+    ExtractJobInfo -->|Success| SaveJobData["`Save job data & mark as valid`"]
+    SaveJobData --> CheckJobURL
 ```
