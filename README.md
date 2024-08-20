@@ -49,7 +49,7 @@ python main.py --help
 ## Workflow
 
 ```mermaid
-%%{init: {'theme': 'dark', 'flowchart': {'curve': 'basis'}, 'fontSize': 14}}%%
+%%{init: {'theme': 'dark', 'flowchart': {'curve': 'basis'}, 'fontSize': 14px}}%%
 flowchart TB
     Start(["`Start`"]) --> CheckCompanyURL{"`Is there another company we want to scrape job ads from?`"}
     CheckCompanyURL -->|No| Exit(["`Exit`"])

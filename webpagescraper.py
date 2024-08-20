@@ -1,3 +1,4 @@
+""" Gets the html from a web-page """
 import os
 import time
 import requests

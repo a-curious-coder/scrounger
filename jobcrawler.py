@@ -18,11 +18,11 @@ class JobCrawler:
 
     def find_job_page(self):
         visited_urls = []
-        contains_job_listings = False
+        contains_job_listings = False # Verifies it's a careers page
         company_domain = self.crawl_url.strip("https://")
         while not contains_job_listings:
-            crawl_html = get_html_content(self.crawl_url)
-            urls = extract_urls_from_html(crawl_html, self.homepage_url)
+            crawl_html = self.webscraper.get_html_content(self.crawl_url)
+            urls = self.urlextractor.get_urls_from_html_file(crawl_html, self.homepage_url)
             self.job_page_url = extract_job_page_url(urls, blacklist=visited_urls)
             if self.job_page_url is None or self.job_page_url in visited_urls:
                 self.job_page_url = None
@@ -37,7 +37,7 @@ class JobCrawler:
 
                 for url in potential_career_urls:
                     if url not in visited_urls:
-                        career_page_html = get_html_content(url)
+                        career_page_html = self.webscraper.get_html_content(url)
                         if career_page_html != "":
                             self.job_page_url = url
                             break
@@ -50,10 +50,10 @@ class JobCrawler:
 
             visited_urls.append(self.job_page_url)
 
-            potential_job_listings_site = get_html_content(self.job_page_url)
-            potential_listing_urls = extract_urls_from_html(potential_job_listings_site, self.homepage_url)
+            potential_job_listings_site = self.webscraper.get_html_content(self.job_page_url)
+            potential_listing_urls = self.urlextractor.get_urls_from_html_file(potential_job_listings_site, self.homepage_url)
 
-            self.job_urls = extract_job_listings(potential_listing_urls, blacklist=visited_urls)
+            self.job_urls = self.urlextractor.get_urls_from_html_file(potential_listing_urls, blacklist=visited_urls)
 
             if len(self.job_urls) > 0 and self.job_urls[0].lower() != "none":
                 contains_job_listings = True
@@ -126,3 +126,20 @@ class JobCrawler:
             logger.info(f"✅ Job ad written to CSV: {job_ad.url}")
         else:
             logger.info(f"⏭️ Job ad already exists in CSV, skipping: {job_ad.url}")
+
+
+def extract_job_page_url(urls: List[str], blacklist=[]) -> Optional[str]:
+    """Use OpenAI to analyze the URLs and find the most likely job listings page."""
+    logger.info("🤖 Analyzing URLs to find job listings page")
+    prompt = f"Given the following list of URLs, give me the one URL that is most likely to contain the company's job listings. You must only respond with the URL, nothing else. The URL must not be an exact match to any urls in the following blacklist although if it's similar, that is allowed.: [{blacklist}\nIf you are not sure, simply say \"None\":\n\n" + "\n".join(urls)
+    response = openai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    job_page_url = response.choices[0].message.content.strip()
+    if job_page_url.lower() != 'none':
+        logger.info(f"✅ Identified job listings page: {job_page_url}")
+        return job_page_url
+    else:
+        logger.warning("❌ Could not identify job listings page")
+        return None

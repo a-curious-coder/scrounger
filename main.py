@@ -28,21 +28,6 @@ if openai.api_key is None:
     logging.warning("No OpenAI API key provided...")
     exit(0)
 
-def extract_job_page_url(urls: List[str], blacklist=[]) -> Optional[str]:
-    """Use OpenAI to analyze the URLs and find the most likely job listings page."""
-    logger.info("🤖 Analyzing URLs to find job listings page")
-    prompt = f"Given the following list of URLs, give me the one URL that is most likely to contain the company's job listings. You must only respond with the URL, nothing else. The URL must not be an exact match to any urls in the following blacklist although if it's similar, that is allowed.: [{blacklist}\nIf you are not sure, simply say \"None\":\n\n" + "\n".join(urls)
-    response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    job_page_url = response.choices[0].message.content.strip()
-    if job_page_url.lower() != 'none':
-        logger.info(f"✅ Identified job listings page: {job_page_url}")
-        return job_page_url
-    else:
-        logger.warning("❌ Could not identify job listings page")
-        return None
 
 def process_company(homepage_url: str, output_file: str):
     """Process a company to find and extract job listings."""
